@@ -295,7 +295,6 @@ public class MD5Util {
                 try {
                     in.close();
                 } catch (IOException e) {
-                    e.printStackTrace();
                 }
             }
         }

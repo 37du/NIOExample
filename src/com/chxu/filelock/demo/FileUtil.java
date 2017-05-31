@@ -41,8 +41,11 @@ public class FileUtil {
                 File file = new File(filepath);
                 fos = new FileOutputStream(file);
                 channel = fos.getChannel();
+//                MappedByteBuffer mapBuf = channel.map(FileChannel.MapMode.READ_WRITE,0, Long.MAX_VALUE);
                 lock = channel.lock();
                 Charset charset = Charset.forName("UTF-8");
+//                mapBuf.put(charset.encode(content));
+//                mapBuf.force();
                 channel.write(charset.encode(content));
             } catch (FileNotFoundException e) {
                 throw e;
@@ -71,7 +74,34 @@ public class FileUtil {
             }
         }
     }
-    
+
+    public static void write(FileChannel channel, String content) throws Exception {
+        FileLock lock = null;
+        synchronized (sFileLock) {
+            try {
+                lock = channel.lock();
+                Charset charset = Charset.forName("UTF-8");
+                channel.write(charset.encode(content));
+            } catch (FileNotFoundException e) {
+                throw e;
+            } catch (IOException e) {
+                throw e;
+            } catch (RuntimeException e) { //  防止同进程中多线程获取文件锁抛异常
+                throw e;
+            } catch (Exception e) {
+                throw e;
+            } finally {
+                try {
+                    if (lock != null) {
+                        lock.release();
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
     public static String read(String filepath) throws Exception {
     	String result = "";
         synchronized (sFileLock) {
@@ -83,8 +113,14 @@ public class FileUtil {
                 File file = new File(filepath);
                 raf = new RandomAccessFile(file, "rw");
                 channel = raf.getChannel();
+//                MappedByteBuffer mapBuff = channel.map(MapMode.READ_ONLY, 0, Long.MAX_VALUE);
                 lock = channel.lock();
                 Charset charset = Charset.forName("UTF-8");
+//                byte[] dst = new byte[(int)channel.size()];
+//                CharBuffer charBuffer;	
+//                mapBuff.get(dst);
+//                result = charset.encode(new String(dst)).toString();
+                
                 long size = channel.size();
                 ByteBuffer buffer = ByteBuffer.allocate((int)size);
                 channel.read(buffer);
@@ -113,7 +149,36 @@ public class FileUtil {
             }
         }
     }
-    
+
+    public static String read(FileChannel channel) throws Exception {
+        String result = "";
+        synchronized (sFileLock) {
+            FileLock lock = null;
+
+            try {
+                lock = channel.lock();
+                Charset charset = Charset.forName("UTF-8");
+                long size = channel.size();
+                ByteBuffer buffer = ByteBuffer.allocate((int)size);
+                channel.read(buffer);
+                buffer.flip();
+                result = charset.decode(buffer).toString();
+            } catch (Exception e) {
+                throw e;
+            } finally {
+                try {
+                    if (lock != null) {
+                        lock.release();
+                    }
+                } catch (final IOException e) {
+                    throw e;
+                }
+
+                return result;
+            }
+        }
+    }
+
     public static void writeToMd5(String filepath) {
             Random random = new Random();
             final int length = random.nextInt(20) + 1;
@@ -133,15 +198,44 @@ public class FileUtil {
                 return;
             }
     }
-    
+
+    public static void writeToMd5(String filepath, FileChannel fileChannel) {
+        Random random = new Random();
+        final int length = random.nextInt(20) + 1;
+        StringBuilder sb = new StringBuilder(length);
+        for (int k = 0; k < length; k++) {
+            sb.append((char) (ThreadLocalRandom.current().nextInt(33, 128)));
+        }
+
+        MD5Util md5Util = new MD5Util();
+        String content = sb.toString();
+        String md5Str = md5Util.getMD5ofStr(content);
+        try {
+            write(fileChannel, new String(content));
+            writeMd5List(md5Str, filepath);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return;
+        }
+    }
+
     public static void readToMd5(String filepath) {
             try {
                 final String result = read("ack-test");
                 final String md5 = MD5Util.sGetMD5OfStr(result);
                 writeMd5List(md5, filepath);
             } catch (Exception e) {
-                e.printStackTrace();
                 return;
             }
+    }
+
+    public static void readToMd5(String filepath, FileChannel fileChannel) {
+        try {
+            final String result = read(fileChannel);
+            final String md5 = MD5Util.sGetMD5OfStr(result);
+            writeMd5List(md5, filepath);
+        } catch (Exception e) {
+            return;
+        }
     }
 }
